@@ -5,51 +5,105 @@
 
 
 import telebot
-import traceback
-import torch
-from torchvision import transforms
+from telebot import types
 import config
-from handler import *
+from tg_bot.api import getMockData
+from tg_bot.interval import RepeatedTimer, BotStatus
 
 bot = telebot.TeleBot(config.TOKEN)
-classes=['fire','nofire']
-model = torch.jit.load('fire_net.pt')
-transform = transforms.Compose(
-    [transforms.Resize(224),
-     transforms.ToTensor(),
-     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+botStatus = BotStatus()
+trackStatus = False
 
 
-def get_photo(message):
-    photo = message.photo[1].file_id
-    file_info = bot.get_file(photo)
-    file_content = bot.download_file(file_info.file_path)
-    return file_content
+def track():
+  try:
+    # todo получить картинку и проверить статус
+    data = getMockData(botStatus.step)
+    bot.send_message(botStatus.lastMessage.chat.id, data)
+    botStatus.nextStep()
+  except:
+    if botStatus.errors > 2:
+      interval.stop()
+      bot.send_message(botStatus.lastMessage.chat.id, 'Слишком много ошибок. Отслеживание прекращено')
+      return
+
+    botStatus.errors = botStatus.errors + 1
+    bot.send_message(botStatus.lastMessage.chat.id, 'Ошибка при обновлении статуса', reply_markup=getMessageMarkup(False))
+
+
+interval = RepeatedTimer(config.UPDATE_STATUS_DELAY, track)
+
 
 @bot.message_handler(commands=['start'])
 def start_message(message):
-    bot.send_message(message.chat.id, 'Привет! Пришли фото сюда, а нейронная сеть определит наличие объекта.\nАвтор: @d-yacenko')
+  answerMessage = 'Бот позволит отслеживать статус печати. ' \
+                  '\nДля начала отслеживания введите /' + config.COMMAND_START + '.' + \
+                  '\nДля прекращения отслеживания введите команду /' + config.COMMAND_STOP + '.'
 
-@bot.message_handler(content_types=['photo'])
-def repeat_all_messages(message):
-    try:
-        file_content = get_photo(message)
-        image = byte2image(file_content)
-        image=transform(image)
-        model.eval()
-        image=torch.unsqueeze(image, 0)
-        outputs = model(image)
-        _, preds = torch.max(outputs, 1)
-        bot.send_message(message.chat.id,text='Обнаружено: {}'.format(classes[int(preds)]))
-    except Exception:
-        traceback.print_exc()
-        bot.send_message(message.chat.id, 'Упс, что-то пошло не так :( Обратитесь в службу поддержки!')
+  bot.send_message(message.chat.id, answerMessage, reply_markup=getMessageMarkup())
+
+
+@bot.message_handler(commands=[config.COMMAND_START])
+def start_message(message):
+  startTracking(message)
+
+
+@bot.message_handler(commands=[config.COMMAND_STOP])
+def start_message(message):
+  stopTracking(message)
+
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle(call):
+  if call.data == config.COMMAND_START:
+    startTracking(call.message)
+  if call.data == config.COMMAND_STOP:
+    stopTracking(call.message)
+
+  bot.answer_callback_query(call.id)
+
+
+def startTracking(message):
+  if interval.is_running:
+    bot.send_message(message.chat.id, 'Отслеживание уже начато')
+    return
+
+  bot.send_message(message.chat.id,
+                   'Отслеживание началось. Для остановки введите /' + config.COMMAND_STOP,
+                   reply_markup=getMessageMarkup(True))
+
+  botStatus.setLastMessage(message)
+  interval.start()
+
+
+def stopTracking(message):
+  if not interval.is_running:
+    bot.send_message(message.chat.id, 'Отслеживание не начато')
+    return
+
+  bot.send_message(message.chat.id, 'Отслеживание прекращено. Для возобновления введите /' + config.COMMAND_START,
+                   reply_markup=getMessageMarkup())
+
+  botStatus.setLastMessage(message)
+  interval.stop()
+
+
+def getMessageMarkup(*isStop):
+  markup = types.InlineKeyboardMarkup()
+  if isStop:
+    markup.row(types.InlineKeyboardButton('Остановить', callback_data=config.COMMAND_STOP))
+  else:
+    markup.row(types.InlineKeyboardButton('Возобновить', callback_data=config.COMMAND_START))
+
+  return markup
+
 
 if __name__ == '__main__':
-    import time
-    while True:
-        try:
-            bot.polling(none_stop=True)
-        except Exception as e:
-            time.sleep(15)
-            print('Restart!')
+  import time
+
+  while True:
+    try:
+      bot.polling(none_stop=True)
+    except Exception as e:
+      time.sleep(15)
+      print('Restart!')
