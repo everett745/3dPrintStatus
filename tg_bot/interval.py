@@ -30,12 +30,7 @@ class BotStatus(object):
   def __init__(self):
     self.lastMessage = None
     self.errors = 0
-    self.step = 1
 
   def setLastMessage(self, lastMessage):
     self.lastMessage = lastMessage
     self.errors = 0
-    self.step = 1
-
-  def nextStep(self):
-    self.step = self.step + 1

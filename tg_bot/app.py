@@ -20,7 +20,8 @@ def checkStatus(chatId):
   try:
     data = getPrintStatus()
     bot.send_photo(chatId, photo=data['image'], caption=data['status'])
-    botStatus.nextStep()
+    if data['status'] != 0:
+      interval.stop()
   except:
     bot.send_message(chatId, 'Ошибка получения статуса!')
 
