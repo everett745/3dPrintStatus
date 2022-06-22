@@ -6,8 +6,9 @@
 
 import telebot
 from telebot import types
+
 import config
-from tg_bot.api import getMockData
+from tg_bot.api import getPrintStatus
 from tg_bot.interval import RepeatedTimer, BotStatus
 
 bot = telebot.TeleBot(config.TOKEN)
@@ -15,12 +16,19 @@ botStatus = BotStatus()
 trackStatus = False
 
 
+def checkStatus(chatId):
+  try:
+    data = getPrintStatus()
+    bot.send_photo(chatId, photo=data['image'], caption=data['status'])
+    botStatus.nextStep()
+  except:
+    bot.send_message(chatId, 'Ошибка получения статуса!')
+
+
 def track():
   try:
     # todo получить картинку и проверить статус
-    data = getMockData(botStatus.step)
-    bot.send_message(botStatus.lastMessage.chat.id, data)
-    botStatus.nextStep()
+    checkStatus(botStatus.lastMessage.chat.id)
   except:
     if botStatus.errors > 2:
       interval.stop()
@@ -28,7 +36,8 @@ def track():
       return
 
     botStatus.errors = botStatus.errors + 1
-    bot.send_message(botStatus.lastMessage.chat.id, 'Ошибка при обновлении статуса', reply_markup=getMessageMarkup(False))
+    bot.send_message(botStatus.lastMessage.chat.id, 'Ошибка при обновлении статуса',
+                     reply_markup=getMessageMarkup(False))
 
 
 interval = RepeatedTimer(config.UPDATE_STATUS_DELAY, track)
@@ -38,6 +47,7 @@ interval = RepeatedTimer(config.UPDATE_STATUS_DELAY, track)
 def start_message(message):
   answerMessage = 'Бот позволит отслеживать статус печати. ' \
                   '\nДля начала отслеживания введите /' + config.COMMAND_START + '.' + \
+                  '\nДля начала получения статуса /' + config.GET_STATUS + '.' + \
                   '\nДля прекращения отслеживания введите команду /' + config.COMMAND_STOP + '.'
 
   bot.send_message(message.chat.id, answerMessage, reply_markup=getMessageMarkup())
@@ -51,6 +61,11 @@ def start_message(message):
 @bot.message_handler(commands=[config.COMMAND_STOP])
 def start_message(message):
   stopTracking(message)
+
+
+@bot.message_handler(commands=[config.GET_STATUS])
+def start_message(message):
+  checkStatus(message.chat.id)
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -106,4 +121,3 @@ if __name__ == '__main__':
       bot.polling(none_stop=True)
     except Exception as e:
       time.sleep(15)
-      print('Restart!')
