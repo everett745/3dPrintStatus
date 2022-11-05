@@ -22,36 +22,39 @@ def checkStatus(chatId):
     bot.send_photo(chatId, photo=data['image'], caption=data['status'])
     if data['status'] != 0:
       interval.stop()
+
+    botStatus.errors = 0
   except:
-    bot.send_message(chatId, 'Ошибка получения статуса!')
+    bot.send_message(chatId, 'Ошибка получения статуса!', reply_markup=getMessageMarkup(interval.is_running, True))
+    botStatus.errors = botStatus.errors + 1
 
 
 def track():
-  try:
-    # todo получить картинку и проверить статус
-    checkStatus(botStatus.lastMessage.chat.id)
-  except:
-    if botStatus.errors > 2:
-      interval.stop()
-      bot.send_message(botStatus.lastMessage.chat.id, 'Слишком много ошибок. Отслеживание прекращено')
-      return
+  if botStatus.errors > 2:
+    interval.stop()
+    bot.send_message(
+      botStatus.lastMessage.chat.id,
+      'Cлишком много ошибок. Отслеживание прекращено',
+      reply_markup=getMessageMarkup(False, True))
+    return
 
-    botStatus.errors = botStatus.errors + 1
-    bot.send_message(botStatus.lastMessage.chat.id, 'Ошибка при обновлении статуса',
-                     reply_markup=getMessageMarkup(False))
+  checkStatus(botStatus.lastMessage.chat.id)
 
 
 interval = RepeatedTimer(config.UPDATE_STATUS_DELAY, track)
 
 
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=[config.HELP, 'Помощь'])
 def start_message(message):
   answerMessage = 'Бот позволит отслеживать статус печати. ' \
-                  '\nДля начала отслеживания введите /' + config.COMMAND_START + '.' + \
-                  '\nДля начала получения статуса /' + config.GET_STATUS + '.' + \
-                  '\nДля прекращения отслеживания введите команду /' + config.COMMAND_STOP + '.'
+                  '\nНачать отслеживане: /' + config.COMMAND_START + '.' + \
+                  '\nПолучить стаус /' + config.GET_STATUS + '.' + \
+                  '\nПрекратить отслеживане: /' + config.COMMAND_STOP + '.' + \
+                  '\nПомощь: /' + config.HELP + '.'
 
-  bot.send_message(message.chat.id, answerMessage, reply_markup=getMessageMarkup())
+  bot.send_message(message.chat.id,
+                   answerMessage,
+                   reply_markup=getMessageMarkup())
 
 
 @bot.message_handler(commands=[config.COMMAND_START])
@@ -81,12 +84,14 @@ def handle(call):
 
 def startTracking(message):
   if interval.is_running:
-    bot.send_message(message.chat.id, 'Отслеживание уже начато')
+    bot.send_message(message.chat.id,
+                     'Отслеживание уже начато',
+                     reply_markup=getMessageMarkup(False, True))
     return
 
   bot.send_message(message.chat.id,
                    'Отслеживание началось. Для остановки введите /' + config.COMMAND_STOP,
-                   reply_markup=getMessageMarkup(True))
+                   reply_markup=getMessageMarkup(True, True))
 
   botStatus.setLastMessage(message)
   interval.start()
@@ -94,22 +99,33 @@ def startTracking(message):
 
 def stopTracking(message):
   if not interval.is_running:
-    bot.send_message(message.chat.id, 'Отслеживание не начато')
+    bot.send_message(message.chat.id,
+                     'Отслеживание не начато',
+                     reply_markup=getMessageMarkup(False, True))
     return
 
-  bot.send_message(message.chat.id, 'Отслеживание прекращено. Для возобновления введите /' + config.COMMAND_START,
-                   reply_markup=getMessageMarkup())
+  bot.send_message(message.chat.id,
+                   'Отслеживание прекращено. Для возобновления введите /' + config.COMMAND_START,
+                   reply_markup=getMessageMarkup(False, True))
 
   botStatus.setLastMessage(message)
   interval.stop()
 
 
-def getMessageMarkup(*isStop):
+def getMessageMarkup(isStop=False, withHelp=False):
   markup = types.InlineKeyboardMarkup()
+
   if isStop:
-    markup.row(types.InlineKeyboardButton('Остановить', callback_data=config.COMMAND_STOP))
+    markup.row(
+      types.InlineKeyboardButton('Стоп', callback_data=config.COMMAND_STOP),
+      types.InlineKeyboardButton('Статус', callback_data=config.GET_STATUS))
   else:
-    markup.row(types.InlineKeyboardButton('Возобновить', callback_data=config.COMMAND_START))
+    markup.row(
+      types.InlineKeyboardButton('Старт', callback_data=config.COMMAND_START),
+      types.InlineKeyboardButton('Статус', callback_data=config.GET_STATUS))
+
+  if withHelp:
+    markup.row(types.InlineKeyboardButton('Помощь', callback_data=config.HELP))
 
   return markup
 
