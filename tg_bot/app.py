@@ -3,7 +3,6 @@
 # pip3 install opencv-python
 # pip3 install PyTelegramBotAPI==2.2.3
 
-
 import telebot
 from telebot import types
 
@@ -14,13 +13,13 @@ from tg_bot.interval import RepeatedTimer, BotStatus
 bot = telebot.TeleBot(config.TOKEN)
 botStatus = BotStatus()
 trackStatus = False
-
+interval = RepeatedTimer(config.UPDATE_STATUS_DELAY, None)
 
 def checkStatus(chatId):
   try:
     data = getPrintStatus()
     bot.send_photo(chatId, photo=data['image'], caption=data['status'])
-    if data['status'] != 0:
+    if data['status'] == 0:
       interval.stop()
 
     botStatus.errors = 0
@@ -40,9 +39,7 @@ def track():
 
   checkStatus(botStatus.lastMessage.chat.id)
 
-
-interval = RepeatedTimer(config.UPDATE_STATUS_DELAY, track)
-
+interval.function = track
 
 @bot.message_handler(commands=[config.HELP, 'Помощь'])
 def start_message(message):
@@ -78,6 +75,8 @@ def handle(call):
     startTracking(call.message)
   if call.data == config.COMMAND_STOP:
     stopTracking(call.message)
+  if call.data == config.GET_STATUS:
+    checkStatus(call.message.chat.id)
 
   bot.answer_callback_query(call.id)
 

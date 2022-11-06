@@ -5,5 +5,5 @@ COMMAND_STOP = 'stop'
 GET_STATUS = 'status'
 HELP = 'start'
 
-# 1 minute
-UPDATE_STATUS_DELAY = 10
+# 3 minutes
+UPDATE_STATUS_DELAY = 180
